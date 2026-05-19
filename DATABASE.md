@@ -4,13 +4,13 @@ This directory contains PostgreSQL migrations and tests for the arcade game scor
 
 ## Files
 
-- `migrations/001_create_scores_table.sql` - Creates the main scores table and leaderboard index
-- `migrations/002_add_replay_verification.sql` - Adds replay verification hash column
+- `migrations/001_create_scores_table.sql` - Creates the complete scores table with leaderboard index
+- `migrations/002_add_replay_verification.sql` - (Legacy file, replay_hash now included in 001)
 - `test_acceptance_criteria.sql` - Test script that verifies all acceptance criteria
 
 ## Schema
 
-### Scores Table (after 001)
+### Scores Table
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -19,25 +19,19 @@ This directory contains PostgreSQL migrations and tests for the arcade game scor
 | `game_slug` | VARCHAR(50) | NOT NULL | Game identifier |
 | `score` | INTEGER | NOT NULL, >= 0 | Player's score |
 | `timestamp` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | When the score was achieved |
-
-### Scores Table (after 002)
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
 | `replay_hash` | VARCHAR(64) | DEFAULT NULL | Hash for replay verification |
 
 ### Indexes
 
-- `idx_scores_leaderboard` - Unique composite index on `(game_slug, score DESC)` for efficient leaderboard queries.
+- `idx_scores_leaderboard` - Non-unique composite index on `(game_slug, score DESC)` for efficient leaderboard queries.
 
 ## Usage
 
 ### Running Migrations
 
 ```sql
--- Run migrations in order
+-- Run the migration
 \i migrations/001_create_scores_table.sql
-\i migrations/002_add_replay_verification.sql
 ```
 
 ### Testing
@@ -63,7 +57,7 @@ FROM scores
 WHERE player_name = 'ALICE'
 GROUP BY game_slug;
 
--- Insert a new score after migration 002
+-- Insert a new score with replay verification
 INSERT INTO scores (player_name, game_slug, score, replay_hash)
 VALUES ('PLAYER1', 'galaga', 125000, 'hash123');
 ```

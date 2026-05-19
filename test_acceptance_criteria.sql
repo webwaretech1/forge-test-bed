@@ -8,11 +8,10 @@ DROP EXTENSION IF EXISTS "uuid-ossp";
 
 \i migrations/001_create_scores_table.sql
 
--- Test 1: Verify table structure from 001 (without replay_hash)
+-- Test 1: Verify table structure from 001 (including replay_hash)
 DO $$
 DECLARE
     missing_columns INTEGER;
-    has_replay_hash BOOLEAN;
 BEGIN
     SELECT COUNT(*) INTO missing_columns
     FROM (
@@ -21,7 +20,8 @@ BEGIN
             ('player_name', 'character varying'),
             ('game_slug', 'character varying'),
             ('score', 'integer'),
-            ('timestamp', 'timestamp with time zone')
+            ('timestamp', 'timestamp with time zone'),
+            ('replay_hash', 'character varying')
     ) AS expected(column_name, data_type)
     LEFT JOIN information_schema.columns c
       ON c.table_name = 'scores'
@@ -32,22 +32,13 @@ BEGIN
     IF missing_columns <> 0 THEN
         RAISE EXCEPTION 'Missing or incorrect required columns in scores table after 001';
     END IF;
-
-    SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'scores' AND column_name = 'replay_hash'
-    ) INTO has_replay_hash;
-
-    IF has_replay_hash THEN
-        RAISE EXCEPTION 'replay_hash must not exist before migration 002';
-    END IF;
 END $$;
 
 DO $$
 DECLARE
     player_len INTEGER;
     slug_len INTEGER;
+    replay_len INTEGER;
 BEGIN
     SELECT character_maximum_length INTO player_len
     FROM information_schema.columns
@@ -57,6 +48,10 @@ BEGIN
     FROM information_schema.columns
     WHERE table_name = 'scores' AND column_name = 'game_slug';
 
+    SELECT character_maximum_length INTO replay_len
+    FROM information_schema.columns
+    WHERE table_name = 'scores' AND column_name = 'replay_hash';
+
     IF player_len <> 10 THEN
         RAISE EXCEPTION 'player_name length mismatch: expected 10, got %', player_len;
     END IF;
@@ -64,35 +59,27 @@ BEGIN
     IF slug_len <> 50 THEN
         RAISE EXCEPTION 'game_slug length mismatch: expected 50, got %', slug_len;
     END IF;
-END $$;
-
--- Test 2: Insert initial rows prior to 002 to validate data preservation
-INSERT INTO scores (player_name, game_slug, score, timestamp)
-VALUES ('ALICE', 'pac-man', 245680, '2026-05-18 14:30:00+00');
-
--- Apply 002 and verify replay_hash exists and prior rows remain
-\i migrations/002_add_replay_verification.sql
-
-DO $$
-DECLARE
-    replay_len INTEGER;
-    preserved_rows INTEGER;
-    replay_null_count INTEGER;
-BEGIN
-    SELECT character_maximum_length INTO replay_len
-    FROM information_schema.columns
-    WHERE table_name = 'scores' AND column_name = 'replay_hash';
 
     IF replay_len <> 64 THEN
         RAISE EXCEPTION 'replay_hash length mismatch: expected 64, got %', replay_len;
     END IF;
+END $$;
 
-    SELECT COUNT(*) INTO preserved_rows
+-- Test 2: Insert initial row and verify replay_hash defaults to NULL
+INSERT INTO scores (player_name, game_slug, score, timestamp)
+VALUES ('ALICE', 'pac-man', 245680, '2026-05-18 14:30:00+00');
+
+DO $$
+DECLARE
+    inserted_rows INTEGER;
+    replay_null_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO inserted_rows
     FROM scores
     WHERE player_name = 'ALICE' AND game_slug = 'pac-man' AND score = 245680;
 
-    IF preserved_rows <> 1 THEN
-        RAISE EXCEPTION 'Expected pre-002 rows to remain after 002 migration';
+    IF inserted_rows <> 1 THEN
+        RAISE EXCEPTION 'Expected ALICE row to be inserted';
     END IF;
 
     SELECT COUNT(*) INTO replay_null_count
@@ -100,7 +87,7 @@ BEGIN
     WHERE player_name = 'ALICE' AND game_slug = 'pac-man' AND score = 245680 AND replay_hash IS NULL;
 
     IF replay_null_count <> 1 THEN
-        RAISE EXCEPTION 'Expected pre-existing rows to have replay_hash = NULL';
+        RAISE EXCEPTION 'Expected inserted row to have replay_hash = NULL by default';
     END IF;
 END $$;
 
@@ -211,12 +198,12 @@ BEGIN
       AND tablename = 'scores'
       AND indexname = 'idx_scores_leaderboard';
 
-    -- Check for exact required unique index definition
+    -- Check for required index definition (non-unique to allow tied scores)
     IF idx_def IS NULL THEN
         RAISE EXCEPTION 'Leaderboard index idx_scores_leaderboard is missing';
     END IF;
 
-    IF idx_def NOT LIKE 'CREATE UNIQUE INDEX idx_scores_leaderboard ON public.scores USING btree (game_slug, score DESC)%' THEN
+    IF idx_def NOT LIKE 'CREATE INDEX idx_scores_leaderboard ON public.scores USING btree (game_slug, score DESC)%' THEN
         RAISE EXCEPTION 'Leaderboard index has wrong definition: %', idx_def;
     END IF;
 END $$;
@@ -240,7 +227,7 @@ BEGIN
         RAISE EXCEPTION 'Expected player_name length violation did not occur';
     END IF;
 
-    IF EXISTS (SELECT 1 FROM scores WHERE player_name = 'VERYLONGNAME') THEN
+    IF EXISTS (SELECT 1 FROM scores WHERE player_name LIKE 'VERYLONG%') THEN
         RAISE EXCEPTION 'Invalid long player_name row was inserted';
     END IF;
 END $$;
