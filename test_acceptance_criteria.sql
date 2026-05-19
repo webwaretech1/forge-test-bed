@@ -1,5 +1,6 @@
 -- Test script to verify all acceptance criteria for arcade scores schema
 -- This script tests all the scenarios mentioned in the GitHub issue
+-- PREREQUISITE: Run migration 001_create_scores_table.sql before executing this test
 
 -- Test 1: Verify table structure after first migration
 \echo 'Testing table structure...'
@@ -38,17 +39,25 @@ SELECT game_slug, MAX(score) as best_score FROM scores WHERE player_name = 'ALIC
 -- Test 7: Test constraint violations
 \echo 'Testing constraint violations...'
 
--- Test player name exceeding 10 characters (should fail)
+-- Test player name exceeding 50 characters (should fail)
 \echo 'Testing player name length constraint (should fail)...'
 \set ON_ERROR_STOP off
-INSERT INTO scores (player_name, game_slug, score) VALUES ('VERYLONGNAME', 'pac-man', 50000);
+INSERT INTO scores (player_name, game_slug, score) VALUES ('THIS_IS_A_VERY_LONG_PLAYER_NAME_THAT_EXCEEDS_FIFTY_CHARACTERS', 'pac-man', 50000);
 \set ON_ERROR_STOP on
+
+-- Verify the invalid insert was rejected
+SELECT COUNT(*) as invalid_name_count FROM scores WHERE player_name = 'THIS_IS_A_VERY_LONG_PLAYER_NAME_THAT_EXCEEDS_FIFTY_CHARACTERS';
+\echo 'Expected invalid_name_count: 0'
 
 -- Test NULL game_slug (should fail)
 \echo 'Testing NOT NULL constraint on game_slug (should fail)...'
 \set ON_ERROR_STOP off
 INSERT INTO scores (player_name, game_slug, score) VALUES ('ALICE', null, 50000);
 \set ON_ERROR_STOP on
+
+-- Verify the invalid insert was rejected
+SELECT COUNT(*) as null_game_slug_count FROM scores WHERE game_slug IS NULL;
+\echo 'Expected null_game_slug_count: 0'
 
 -- Test 8: Verify index exists
 \echo 'Checking indexes...'
