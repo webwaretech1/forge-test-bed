@@ -145,3 +145,70 @@ export class ScoreValidationService {
     };
   }
 }
+
+// HTTP Server
+import http from 'node:http';
+import { URL } from 'node:url';
+
+const globalService = new ScoreValidationService();
+
+export function createServer(service: ScoreValidationService = globalService): http.Server {
+  return http.createServer(async (req, res) => {
+    const url = new URL(req.url!, `http://${req.headers.host}`);
+
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/scores') {
+      let body = '';
+
+      req.on('data', (chunk) => {
+        body += chunk.toString();
+      });
+
+      req.on('end', () => {
+        try {
+          const payload = JSON.parse(body);
+          const result = service.postScore(payload);
+
+          res.setHeader('Content-Type', 'application/json');
+
+          if (result.valid) {
+            res.writeHead(200);
+          } else {
+            res.writeHead(400);
+          }
+
+          res.end(JSON.stringify(result));
+        } catch (error) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            valid: false,
+            error: 'INVALID_JSON',
+            message: 'Invalid JSON in request body'
+          }));
+        }
+      });
+
+      req.on('error', () => {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          valid: false,
+          error: 'REQUEST_ERROR',
+          message: 'Error reading request'
+        }));
+      });
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    }
+  });
+}
