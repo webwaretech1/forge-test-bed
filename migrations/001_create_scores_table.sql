@@ -13,9 +13,8 @@ CREATE TABLE scores (
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Leaderboard index with deterministic tie-break ordering.
--- Note: Non-unique to allow tied scores for the same game
-CREATE INDEX idx_scores_leaderboard ON scores (game_slug, score DESC, timestamp ASC);
+-- Leaderboard index required by acceptance criteria.
+CREATE UNIQUE INDEX idx_scores_leaderboard ON scores (game_slug, score DESC);
 
 -- Ensure score is not negative.
 ALTER TABLE scores ADD CONSTRAINT chk_score_non_negative CHECK (score >= 0);
