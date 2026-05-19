@@ -1,5 +1,5 @@
 -- Migration: Create scores table for arcade game leaderboards
--- This creates the core scores table with proper indexing for efficient leaderboard queries
+-- This creates the core scores table with indexing for efficient leaderboard queries.
 
 -- Enable UUID extension for auto-generating UUIDs
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -13,8 +13,8 @@ CREATE TABLE scores (
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Create non-unique index for efficient leaderboard queries (allows tied scores)
-CREATE INDEX idx_scores_leaderboard ON scores (game_slug, score DESC);
+-- Leaderboard index with deterministic tie-break ordering.
+CREATE INDEX idx_scores_leaderboard ON scores (game_slug, score DESC, timestamp ASC);
 
--- Add check constraint to ensure score is not negative
+-- Ensure score is not negative.
 ALTER TABLE scores ADD CONSTRAINT chk_score_non_negative CHECK (score >= 0);
