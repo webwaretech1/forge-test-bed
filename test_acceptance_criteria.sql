@@ -72,7 +72,7 @@ END $$;
 
 -- Add seed data before 002 to verify existing rows remain intact.
 INSERT INTO scores (player_name, game_slug, score, timestamp) VALUES
-('ALICE', 'pac-man', 245680, '2026-05-18 14:30:00+00'),
+('ALICE', 'pac-man', 245679, '2026-05-18 14:30:00+00'),
 ('BOB', 'pac-man', 350000, '2026-05-18 13:00:00+00'),
 ('CHARLIE', 'pac-man', 280000, '2026-05-18 12:00:00+00'),
 ('DAVE', 'galaga', 124000, '2026-05-18 11:00:00+00'),
@@ -110,7 +110,7 @@ END $$;
 
 -- Insert with replay_hash and verify UUID auto-generation.
 INSERT INTO scores (player_name, game_slug, score, timestamp, replay_hash)
-VALUES ('ALICE', 'pac-man', 245679, '2026-05-18 14:31:00+00', 'abc123def456');
+VALUES ('ALICE', 'pac-man', 245680, '2026-05-18 14:31:00+00', 'abc123def456');
 
 DO $$
 DECLARE
@@ -120,7 +120,7 @@ BEGIN
     FROM scores
     WHERE player_name = 'ALICE'
       AND game_slug = 'pac-man'
-      AND score = 245679
+      AND score = 245680
       AND replay_hash = 'abc123def456'
       AND id IS NOT NULL;
 
