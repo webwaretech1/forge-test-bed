@@ -14,6 +14,7 @@ CREATE TABLE scores (
 );
 
 -- Leaderboard index with deterministic tie-break ordering.
+-- Note: Non-unique to allow tied scores for the same game
 CREATE INDEX idx_scores_leaderboard ON scores (game_slug, score DESC, timestamp ASC);
 
 -- Ensure score is not negative.

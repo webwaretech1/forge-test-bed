@@ -204,18 +204,26 @@ END $$;
 DO $$
 DECLARE
     idx_ok BOOLEAN;
+    idx_def TEXT;
 BEGIN
-    SELECT EXISTS (
-        SELECT 1
-        FROM pg_indexes
-        WHERE schemaname = 'public'
-          AND tablename = 'scores'
-          AND indexname = 'idx_scores_leaderboard'
-          AND indexdef = 'CREATE INDEX idx_scores_leaderboard ON public.scores USING btree (game_slug, score DESC, "timestamp")'
-    ) INTO idx_ok;
+    SELECT indexdef INTO idx_def
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND tablename = 'scores'
+      AND indexname = 'idx_scores_leaderboard';
 
-    IF NOT idx_ok THEN
-        RAISE EXCEPTION 'Required leaderboard index is missing or incorrect';
+    -- Check for correct non-unique index with tie-breaking
+    IF idx_def IS NULL THEN
+        RAISE EXCEPTION 'Leaderboard index idx_scores_leaderboard is missing';
+    END IF;
+
+    IF idx_def NOT LIKE '%btree (game_slug, score DESC, %timestamp%' THEN
+        RAISE EXCEPTION 'Leaderboard index has wrong definition: %', idx_def;
+    END IF;
+
+    -- Ensure it is not unique (to allow tied scores)
+    IF idx_def LIKE 'CREATE UNIQUE INDEX%' THEN
+        RAISE EXCEPTION 'Leaderboard index should not be unique to allow tied scores';
     END IF;
 END $$;
 
@@ -230,6 +238,8 @@ BEGIN
     EXCEPTION
         WHEN string_data_right_truncation THEN
             name_error := TRUE;
+        WHEN OTHERS THEN
+            RAISE EXCEPTION 'Unexpected exception type for player_name constraint violation: %', SQLERRM;
     END;
 
     IF NOT name_error THEN
