@@ -5,7 +5,6 @@ This directory contains PostgreSQL migrations and tests for the arcade game scor
 ## Files
 
 - `migrations/001_create_scores_table.sql` - Creates the complete scores table with leaderboard index
-- `migrations/002_add_replay_verification.sql` - (Legacy file, replay_hash now included in 001)
 - `test_acceptance_criteria.sql` - Test script that verifies all acceptance criteria
 
 ## Schema
