@@ -4,12 +4,13 @@ This directory contains PostgreSQL migrations and tests for the arcade game scor
 
 ## Files
 
-- `migrations/001_create_scores_table.sql` - Creates the complete scores table with leaderboard index
-- `test_acceptance_criteria.sql` - Test script that verifies all acceptance criteria
+- `migrations/001_create_scores_table.sql` - Creates the base scores table and leaderboard index
+- `migrations/002_add_replay_verification.sql` - Adds replay verification column to existing table
+- `test_acceptance_criteria.sql` - Test script that verifies all acceptance criteria end-to-end
 
 ## Schema
 
-### Scores Table
+### Scores Table (after 001 + 002)
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -20,17 +21,20 @@ This directory contains PostgreSQL migrations and tests for the arcade game scor
 | `timestamp` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | When the score was achieved |
 | `replay_hash` | VARCHAR(64) | DEFAULT NULL | Hash for replay verification |
 
-### Indexes
+## Indexes
 
-- `idx_scores_leaderboard` - Non-unique composite index on `(game_slug, score DESC)` for efficient leaderboard queries.
+- `idx_scores_leaderboard` - Unique composite index on `(game_slug, score DESC)`.
 
 ## Usage
 
 ### Running Migrations
 
 ```sql
--- Run the migration
+-- Run base schema
 \i migrations/001_create_scores_table.sql
+
+-- Run replay verification migration
+\i migrations/002_add_replay_verification.sql
 ```
 
 ### Testing
