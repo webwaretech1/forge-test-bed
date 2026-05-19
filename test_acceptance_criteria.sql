@@ -2,17 +2,17 @@
 
 \set ON_ERROR_STOP on
 
--- Deterministic setup: reset and run migrations required by the criteria
+-- Deterministic setup: reset and run 001 first so 002 behavior can be verified.
 DROP TABLE IF EXISTS scores;
 DROP EXTENSION IF EXISTS "uuid-ossp";
 
 \i migrations/001_create_scores_table.sql
-\i migrations/002_add_replay_verification.sql
 
--- Test 1: Verify table structure and required columns
+-- Test 1: Verify table structure from 001 (without replay_hash)
 DO $$
 DECLARE
     missing_columns INTEGER;
+    has_replay_hash BOOLEAN;
 BEGIN
     SELECT COUNT(*) INTO missing_columns
     FROM (
@@ -21,8 +21,7 @@ BEGIN
             ('player_name', 'character varying'),
             ('game_slug', 'character varying'),
             ('score', 'integer'),
-            ('timestamp', 'timestamp with time zone'),
-            ('replay_hash', 'character varying')
+            ('timestamp', 'timestamp with time zone')
     ) AS expected(column_name, data_type)
     LEFT JOIN information_schema.columns c
       ON c.table_name = 'scores'
@@ -31,7 +30,17 @@ BEGIN
     WHERE c.column_name IS NULL;
 
     IF missing_columns <> 0 THEN
-        RAISE EXCEPTION 'Missing or incorrect required columns in scores table';
+        RAISE EXCEPTION 'Missing or incorrect required columns in scores table after 001';
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'scores' AND column_name = 'replay_hash'
+    ) INTO has_replay_hash;
+
+    IF has_replay_hash THEN
+        RAISE EXCEPTION 'replay_hash must not exist before migration 002';
     END IF;
 END $$;
 
@@ -39,7 +48,6 @@ DO $$
 DECLARE
     player_len INTEGER;
     slug_len INTEGER;
-    replay_len INTEGER;
 BEGIN
     SELECT character_maximum_length INTO player_len
     FROM information_schema.columns
@@ -49,10 +57,6 @@ BEGIN
     FROM information_schema.columns
     WHERE table_name = 'scores' AND column_name = 'game_slug';
 
-    SELECT character_maximum_length INTO replay_len
-    FROM information_schema.columns
-    WHERE table_name = 'scores' AND column_name = 'replay_hash';
-
     IF player_len <> 10 THEN
         RAISE EXCEPTION 'player_name length mismatch: expected 10, got %', player_len;
     END IF;
@@ -60,15 +64,49 @@ BEGIN
     IF slug_len <> 50 THEN
         RAISE EXCEPTION 'game_slug length mismatch: expected 50, got %', slug_len;
     END IF;
+END $$;
+
+-- Test 2: Insert initial rows prior to 002 to validate data preservation
+INSERT INTO scores (player_name, game_slug, score, timestamp)
+VALUES ('ALICE', 'pac-man', 245680, '2026-05-18 14:30:00+00');
+
+-- Apply 002 and verify replay_hash exists and prior rows remain
+\i migrations/002_add_replay_verification.sql
+
+DO $$
+DECLARE
+    replay_len INTEGER;
+    preserved_rows INTEGER;
+    replay_null_count INTEGER;
+BEGIN
+    SELECT character_maximum_length INTO replay_len
+    FROM information_schema.columns
+    WHERE table_name = 'scores' AND column_name = 'replay_hash';
 
     IF replay_len <> 64 THEN
         RAISE EXCEPTION 'replay_hash length mismatch: expected 64, got %', replay_len;
     END IF;
+
+    SELECT COUNT(*) INTO preserved_rows
+    FROM scores
+    WHERE player_name = 'ALICE' AND game_slug = 'pac-man' AND score = 245680;
+
+    IF preserved_rows <> 1 THEN
+        RAISE EXCEPTION 'Expected pre-002 rows to remain after 002 migration';
+    END IF;
+
+    SELECT COUNT(*) INTO replay_null_count
+    FROM scores
+    WHERE player_name = 'ALICE' AND game_slug = 'pac-man' AND score = 245680 AND replay_hash IS NULL;
+
+    IF replay_null_count <> 1 THEN
+        RAISE EXCEPTION 'Expected pre-existing rows to have replay_hash = NULL';
+    END IF;
 END $$;
 
--- Test 2: Insert score record with auto-generated UUID
+-- Test 3: Insert score with replay_hash and verify UUID auto-generation
 INSERT INTO scores (player_name, game_slug, score, timestamp, replay_hash)
-VALUES ('ALICE', 'pac-man', 245680, '2026-05-18 14:30:00+00', 'abc123def456');
+VALUES ('ALICE', 'pac-man', 245680, '2026-05-18 14:31:00+00', 'abc123def456');
 
 DO $$
 DECLARE
@@ -83,11 +121,11 @@ BEGIN
       AND id IS NOT NULL;
 
     IF row_count <> 1 THEN
-        RAISE EXCEPTION 'Expected inserted ALICE row with non-null UUID';
+        RAISE EXCEPTION 'Expected inserted ALICE row with replay_hash and non-null UUID';
     END IF;
 END $$;
 
--- Test 3: Insert additional data for leaderboard and personal-best queries
+-- Test 4: Insert additional data for leaderboard and personal-best queries
 INSERT INTO scores (player_name, game_slug, score, timestamp) VALUES
 ('BOB', 'pac-man', 350000, '2026-05-18 13:00:00+00'),
 ('CHARLIE', 'pac-man', 280000, '2026-05-18 12:00:00+00'),
@@ -96,7 +134,7 @@ INSERT INTO scores (player_name, game_slug, score, timestamp) VALUES
 ('ALICE', 'galaga', 125000, '2026-05-18 09:00:00+00'),
 ('ALICE', 'space-invaders', 89000, '2026-05-18 08:00:00+00');
 
--- Test 4: Leaderboard query assertions
+-- Test 5: Leaderboard query assertions
 DO $$
 DECLARE
     top_players TEXT[];
@@ -126,7 +164,7 @@ BEGIN
     END IF;
 END $$;
 
--- Test 5: Personal-best query assertions
+-- Test 6: Personal-best query assertions
 DO $$
 DECLARE
     game_count INTEGER;
@@ -162,7 +200,7 @@ BEGIN
     END IF;
 END $$;
 
--- Test 6: Leaderboard index assertions
+-- Test 7: Leaderboard index assertions
 DO $$
 DECLARE
     idx_ok BOOLEAN;
@@ -173,7 +211,7 @@ BEGIN
         WHERE schemaname = 'public'
           AND tablename = 'scores'
           AND indexname = 'idx_scores_leaderboard'
-          AND indexdef = 'CREATE INDEX idx_scores_leaderboard ON public.scores USING btree (game_slug, score DESC)'
+          AND indexdef = 'CREATE INDEX idx_scores_leaderboard ON public.scores USING btree (game_slug, score DESC, "timestamp")'
     ) INTO idx_ok;
 
     IF NOT idx_ok THEN
@@ -181,7 +219,7 @@ BEGIN
     END IF;
 END $$;
 
--- Test 7: Constraint-violation assertions
+-- Test 8: Constraint-violation assertions with strict exception types
 DO $$
 DECLARE
     name_error BOOLEAN := FALSE;
@@ -221,20 +259,6 @@ BEGIN
 
     IF EXISTS (SELECT 1 FROM scores WHERE game_slug IS NULL) THEN
         RAISE EXCEPTION 'Invalid NULL game_slug row was inserted';
-    END IF;
-END $$;
-
--- Test 8: Verify replay_hash added by 002 and existing rows preserved
-DO $$
-DECLARE
-    pre_002_survivors INTEGER;
-BEGIN
-    SELECT COUNT(*) INTO pre_002_survivors
-    FROM scores
-    WHERE player_name IN ('ALICE', 'BOB', 'CHARLIE', 'DAVE', 'EVE');
-
-    IF pre_002_survivors < 7 THEN
-        RAISE EXCEPTION 'Expected existing rows to remain intact after replay_hash migration';
     END IF;
 END $$;
 
