@@ -28,7 +28,7 @@ This directory contains PostgreSQL migrations and tests for the arcade game scor
 
 ### Indexes
 
-- `idx_scores_leaderboard` - Unique composite index on `(game_slug, score DESC)` for leaderboard queries
+- `idx_scores_leaderboard` - Composite index on `(game_slug, score DESC)` for efficient leaderboard queries (non-unique to allow tied scores)
 
 ## Usage
 

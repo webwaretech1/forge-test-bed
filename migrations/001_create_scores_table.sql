@@ -13,8 +13,8 @@ CREATE TABLE scores (
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Create unique index for efficient leaderboard queries
-CREATE UNIQUE INDEX idx_scores_leaderboard ON scores (game_slug, score DESC);
+-- Create non-unique index for efficient leaderboard queries (allows tied scores)
+CREATE INDEX idx_scores_leaderboard ON scores (game_slug, score DESC);
 
 -- Add check constraint to ensure score is not negative
 ALTER TABLE scores ADD CONSTRAINT chk_score_non_negative CHECK (score >= 0);

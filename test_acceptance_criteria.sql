@@ -162,7 +162,7 @@ BEGIN
     END IF;
 END $$;
 
--- Test 6: Unique index assertions
+-- Test 6: Leaderboard index assertions
 DO $$
 DECLARE
     idx_ok BOOLEAN;
@@ -173,11 +173,11 @@ BEGIN
         WHERE schemaname = 'public'
           AND tablename = 'scores'
           AND indexname = 'idx_scores_leaderboard'
-          AND indexdef = 'CREATE UNIQUE INDEX idx_scores_leaderboard ON public.scores USING btree (game_slug, score DESC)'
+          AND indexdef = 'CREATE INDEX idx_scores_leaderboard ON public.scores USING btree (game_slug, score DESC)'
     ) INTO idx_ok;
 
     IF NOT idx_ok THEN
-        RAISE EXCEPTION 'Required unique leaderboard index is missing or incorrect';
+        RAISE EXCEPTION 'Required leaderboard index is missing or incorrect';
     END IF;
 END $$;
 
@@ -191,8 +191,6 @@ BEGIN
         VALUES ('VERYLONGNAME', 'pac-man', 50000);
     EXCEPTION
         WHEN string_data_right_truncation THEN
-            name_error := TRUE;
-        WHEN OTHERS THEN
             name_error := TRUE;
     END;
 
@@ -214,8 +212,6 @@ BEGIN
         VALUES ('ALICE', NULL, 50000);
     EXCEPTION
         WHEN not_null_violation THEN
-            slug_error := TRUE;
-        WHEN OTHERS THEN
             slug_error := TRUE;
     END;
 
